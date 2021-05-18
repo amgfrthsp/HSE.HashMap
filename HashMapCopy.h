@@ -49,25 +49,32 @@ public:
       return hasher;
   }
 
-  void insert(const element& new_el) {
+  size_t get_bucket_number(const KeyType& key) const {
+      return hasher(key) % array_size;
+  }
+
+  void insert(const element& new_el, bool need_rehash = true) {
       const auto it = find(new_el.first);
       if (it != end())
           return;
-      const size_t pos = hasher(new_el.first) % array_size;
+      const size_t pos = get_bucket_number(new_el.first);
       if (HashTable[pos].first == end()) {
-          HashTable[pos].first = HashTable[pos].second = elem_list.insert(elem_list.end(), new_el);
+          HashTable[pos].first = elem_list.insert(elem_list.end(), new_el);
+          HashTable[pos].second = HashTable[pos].first;
           ++hash_table_size;
-          rehash();
+          if (need_rehash)
+              rehash();
           return;
       }
       HashTable[pos].first = elem_list.insert(HashTable[pos].first, new_el);
       ++hash_table_size;
-      rehash();
+      if (need_rehash)
+        rehash();
   }
 
   void erase(const KeyType& key) {
       const auto it = find(key);
-      const size_t pos = hasher(key) % array_size;
+      const size_t pos = get_bucket_number(key);
       if (it == end())
         return;
       bool one_elem = (HashTable[pos].first == HashTable[pos].second);
@@ -82,10 +89,11 @@ public:
           HashTable[pos] = std::make_pair(end(), end());
       }
       --hash_table_size;
+      rehash();
   }
 
   iterator find(const KeyType& key) {
-      const size_t pos = hasher(key) % array_size;
+      const size_t pos = get_bucket_number(key);
       if (HashTable[pos].first == end())
           return end();
       for (iterator it = HashTable[pos].first; it != next(HashTable[pos].second); ++it) {
@@ -94,8 +102,9 @@ public:
       }
       return end();
   }
+
   const_iterator find(const KeyType& key) const {
-      const size_t pos = hasher(key) % array_size;
+      const size_t pos = get_bucket_number(key);
       if (HashTable[pos].first == end())
           return end();
       for (const_iterator it = HashTable[pos].first; it != next(HashTable[pos].second); ++it) {
@@ -130,10 +139,15 @@ public:
       throw std::out_of_range("no such key in HashMap");
   }
 
+  void resize(size_t new_capacity) {
+      array_size = new_capacity;
+      HashTable.assign(array_size, std::make_pair(end(), end()));
+  }
+
   void clear() {
       elem_list.clear();
       HashTable.clear();
-      HashTable.resize(array_size, std::make_pair(end(), end()));
+      resize(8);
       hash_table_size = 0;
   }
 
@@ -146,20 +160,25 @@ public:
   }
 
   void rehash() {
-      if (hash_table_size <= array_size)
-          return;
-      std::vector<element> tmp;
-      for (auto it = begin(); it != end(); ++it) {
-          tmp.push_back(*it);
-      }
-      array_size *= 2;
-      clear();
-      for (auto& el : tmp) {
-          insert(el);
+      if (hash_table_size < array_size / 2) {
+          rehash_to_new_capacity(array_size * 0.7);
+      } else if (hash_table_size >= array_size) {
+          rehash_to_new_capacity(array_size * 2);
       }
   }
 
 private:
+  void rehash_to_new_capacity(size_t capacity) {
+      std::vector<element> tmp;
+      for (auto it = begin(); it != end(); ++it) {
+          tmp.push_back(*it);
+      }
+      clear();
+      resize(capacity);
+      for (auto& el : tmp) {
+          insert(el, false);
+      }
+  }
 
   size_t array_size = 8;
   size_t hash_table_size = 0;
